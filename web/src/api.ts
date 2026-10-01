@@ -1,4 +1,4 @@
-import type { CircuitComponent, Diagnostic, Wire } from '@try-embedded/simulator';
+import type { CDiagnostic, CForbidRule, CircuitComponent, Diagnostic, Wire } from '@try-embedded/simulator';
 
 // Empty in development (requests go through the Vite proxy); the API's origin in production.
 const BASE = `${import.meta.env.VITE_API_URL ?? ''}/api`;
@@ -47,6 +47,47 @@ export interface ProgressItem {
   total_tests: number;
 }
 
+export interface ProblemTopic { id: string; title: string; summary: string }
+
+export interface ProblemSummary {
+  id: string;
+  title: string;
+  topic: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  summary: string;
+  tags: string[];
+}
+
+export interface ProblemList { topics: ProblemTopic[]; problems: ProblemSummary[] }
+
+// Hidden tests carry only their name; visible ones also show the call and the output it must print.
+export interface ProblemTest { name: string; hidden: boolean; code: string | null; expect: string | null }
+
+export interface Problem extends ProblemSummary {
+  prompt: string;
+  prelude: string;
+  support: string;
+  starter: string;
+  tests: ProblemTest[];
+  hints: string[];
+  forbid: CForbidRule[];
+}
+
+export interface ProblemReview { solution: string; notes: string }
+
+export interface ProblemTestResult extends TestResult { stdout: string | null; expected: string | null }
+
+export interface ProblemSubmission {
+  problem_id: string;
+  passed: boolean;
+  passed_tests: number;
+  total_tests: number;
+  saved: boolean;
+  diagnostics: CDiagnostic[];
+  tests: ProblemTestResult[];
+  review: ProblemReview | null;
+}
+
 export interface SubmissionBody { board: string; code: string; components: CircuitComponent[]; wires: Wire[] }
 
 function errorMessage(detail: unknown, fallback: string): string {
@@ -87,4 +128,9 @@ export const api = {
   submit: (id: string, body: SubmissionBody, token: string | null) =>
     request<SubmissionResult>(`/challenges/${encodeURIComponent(id)}/submissions`, { method: 'POST', body, token }),
   progress: (token: string) => request<ProgressItem[]>('/progress', { token }),
+  problems: () => request<ProblemList>('/c/problems'),
+  problem: (id: string) => request<Problem>(`/c/problems/${encodeURIComponent(id)}`),
+  problemSolution: (id: string) => request<ProblemReview>(`/c/problems/${encodeURIComponent(id)}/solution`),
+  submitProblem: (id: string, code: string, token: string | null) =>
+    request<ProblemSubmission>(`/c/problems/${encodeURIComponent(id)}/submissions`, { method: 'POST', body: { code }, token }),
 };

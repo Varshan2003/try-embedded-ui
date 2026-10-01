@@ -26,13 +26,50 @@ Try Embedded is two services in two repositories, plus one shared library.
 | Piece | Where | What it owns |
 |---|---|---|
 | Frontend | this repo, [web/](web/) | React app: editor, circuit canvas, live simulation, challenge UI |
-| Simulator | this repo, [simulator/](simulator/) | Interpreter, board models, circuit logic and a headless runner |
+| Simulator | this repo, [simulator/](simulator/) | Arduino interpreter, board models, circuit logic, the C interpreter for the Embedded C section, and a headless runner |
 | Backend | `try-embedded-backend` repo | Python (FastAPI): accounts, projects, challenges, grading, progress |
 
 The interactive simulation runs entirely in the browser. To grade a challenge
 the backend runs the same simulator package headlessly through
 [simulator/bin/run.mjs](simulator/bin/run.mjs), so hidden tests never reach the
 client and both sides agree on behaviour.
+
+## Embedded C section
+
+`#/embedded-c` holds the lessons and the practice problems for embedded C.
+
+- **Guides.** Eleven lessons and a quick reference, written in Markdown in
+  [web/src/content/guides/](web/src/content/guides/) and listed in
+  [web/src/embedded-c/guides.ts](web/src/embedded-c/guides.ts). A code block
+  fenced as `c run` becomes an editable example with a Run button, `quiz` a
+  knowledge check and `ask` an interview question with a folded answer. Guides
+  work with no backend.
+- **Practice.** The problems come from the API (`/api/c/problems`). Run executes
+  the visible examples in the browser; Submit sends the code to the API, which
+  also runs the hidden tests. A guide and a practice topic share an id, so each
+  guide lists its own problems.
+- **Playground.** A scratch file at `#/embedded-c/playground`.
+
+All three run code in the C interpreter in
+[simulator/src/c/](simulator/src/c/). It models a 32-bit little-endian
+microcontroller: `int`, `long` and pointers are 4 bytes, RAM is 64 KB at
+0x20000000, string literals and functions are in read-only flash at 0x08000000,
+and the peripheral region at 0x40000000 is readable and writable so register
+code can be exercised. Every byte of RAM is tracked, so out-of-bounds accesses,
+use after free, pointers to dead locals, null dereferences, division by zero
+and out-of-range shifts are reported with a line number instead of corrupting
+memory.
+
+The interpreter covers the C that firmware uses: the preprocessor, all integer
+and floating types, pointers, arrays, structs, unions, bit-fields, enums,
+function pointers, designated initialisers, compound literals, packed structs
+and the common parts of `<stdio.h>`, `<string.h>`, `<stdlib.h>` and `<ctype.h>`.
+It does not support `goto`, variable-length arrays, user-defined variadic
+functions or reading from standard input, and an uninitialised local holds a
+fixed garbage pattern instead of being reported.
+
+`npm test` also runs every runnable example in the guides and checks every
+quiz, so a guide cannot ship with an example that fails.
 
 ## Run locally
 
@@ -78,6 +115,9 @@ Implemented in [web/](web/) and [simulator/](simulator/):
 - Local autosave, project duplication, import/export, shareable project links,
 	and state snapshots
 - Responsive layout and keyboard shortcuts
+- Embedded C section: eleven guides with runnable examples, knowledge checks and
+	interview questions; a quick reference; 136 graded practice problems with
+	hints, hidden tests and reference solutions; and a C playground
 
 These are the foundation of the SiliconLab simulation experience, not yet the
 full interview platform.

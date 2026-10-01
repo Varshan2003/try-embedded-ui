@@ -178,3 +178,38 @@ export interface RunResult {
 }
 
 export function runHeadless(spec: RunSpec): RunResult;
+
+export interface CDiagnostic { severity: 'error' | 'warning'; message: string; line: number | null }
+
+export interface CRunResult {
+  compiled: boolean;
+  stdout: string;
+  exitCode: number | null;
+  error: { message: string; line: number | null; file: string | null; phase: 'compile' | 'run' } | null;
+  diagnostics: CDiagnostic[];
+  ops: number;
+}
+
+/** Runs a complete C program (one that defines main) in the interpreter. */
+export function runC(spec: { code: string; maxOps?: number }): CRunResult;
+
+export interface CTest { name: string; code: string; expect: string }
+export interface CForbidRule { words: string[]; message: string }
+
+export interface CTestSpec {
+  code: string;
+  /** Declarations the learner can rely on, compiled ahead of their code. */
+  prelude?: string;
+  /** Helper code compiled after the learner's, such as mocks the tests need. */
+  support?: string;
+  tests: CTest[];
+  forbid?: CForbidRule[];
+  maxOps?: number;
+}
+
+export interface CTestOutcome { name: string; passed: boolean; stdout: string; expected: string; error: string | null; line?: number | null }
+
+export interface CTestResult { compiled: boolean; diagnostics: CDiagnostic[]; tests: CTestOutcome[] }
+
+/** Runs a learner's functions against tests; each test is the body of main() plus the output it must print. */
+export function runCTests(spec: CTestSpec): CTestResult;

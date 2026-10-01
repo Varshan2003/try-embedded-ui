@@ -4,9 +4,11 @@ import { BottomPanel, toggleBottom } from './components/BottomPanel';
 import { Canvas } from './components/Canvas';
 import { Dialogs } from './components/Dialogs';
 import { Editor } from './components/Editor';
+import { Home } from './components/Home';
 import { Inspector } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
+import { useRoute } from './route';
 import { store, useStore, type BottomTab } from './store';
 
 const TAB_KEYS: BottomTab[] = ['serial', 'compiler', 'pins', 'events'];
@@ -65,6 +67,11 @@ function useBuzzer() {
       a.osc.frequency.value = freq;
     } catch { /* audio is optional */ }
   }, [freq]);
+  // Leaving the lab must not leave a tone playing.
+  useEffect(() => () => {
+    try { audio.current?.osc?.stop(); } catch { /* already stopped */ }
+    if (audio.current) audio.current.osc = null;
+  }, []);
 }
 
 function Toasts() {
@@ -91,7 +98,7 @@ export class CrashBoundary extends Component<{ children: ReactNode }, { message:
   }
 }
 
-export function App() {
+function Lab() {
   useBuzzer();
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown);
@@ -116,4 +123,9 @@ export function App() {
       <Dialogs />
     </>
   );
+}
+
+export function App() {
+  const route = useRoute();
+  return route.page === 'lab' ? <Lab /> : <Home route={route} />;
 }

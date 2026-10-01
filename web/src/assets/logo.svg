@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Placeholder mark: replace this file with the real Try Embedded logo. -->
+  <g stroke="#1aa6c9" stroke-width="4" stroke-linecap="round">
+    <path d="M22 6v10M32 6v10M42 6v10M22 48v10M32 48v10M42 48v10M6 22h10M6 32h10M6 42h10M48 22h10M48 32h10M48 42h10"/>
+  </g>
+  <rect x="14" y="14" width="36" height="36" rx="7" fill="#1aa6c9"/>
+  <path d="M24 25h16M32 25v15" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/>
+</svg>

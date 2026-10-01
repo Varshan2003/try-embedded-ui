@@ -1,6 +1,8 @@
 import { BOARDS } from '@try-embedded/simulator';
+import logo from '../assets/logo.svg';
 import { useStore } from '../store';
 import { BuildIcon, PauseIcon, PlayIcon, ResetIcon, StepIcon } from './icons';
+import { ThemeToggle } from './ThemeToggle';
 
 const SPEEDS: [number, string][] = [[0.25, 'Quarter speed'], [0.5, 'Half speed'], [1, 'Real time'], [2, 'Double speed'], [4, 'Quadruple speed']];
 const STATUS_LABEL = { idle: 'Idle', running: 'Running', paused: 'Paused', error: 'Error' };
@@ -20,7 +22,7 @@ export function Toolbar() {
 
   return (
     <header className="toolbar" role="banner">
-      <div className="brand"><b>SiliconLab</b><span>arduino simulator</span></div>
+      <a className="brand" href="#/" title="Back to Try Embedded home"><img src={logo} alt="" /><b>SiliconLab</b><span>arduino simulator</span></a>
 
       <button className="icon-btn" id="btn-toggle-left" title="Toggle project panel" aria-label="Toggle project panel" onClick={() => togglePanel('left', '.sidebar')}>☰</button>
 
@@ -60,6 +62,7 @@ export function Toolbar() {
           {store.user ? store.user.email.split('@')[0] : 'Sign in'}
         </button>
       )}
+      <ThemeToggle />
       <button className="icon-btn" title="Keyboard shortcuts and simulator limits" aria-label="Help" onClick={() => store.openDialog('help')}>?</button>
       <button className="icon-btn" id="btn-toggle-right" title="Toggle inspector" aria-label="Toggle inspector" onClick={() => togglePanel('right', '.inspector')}>◧</button>
     </header>
