@@ -1,0 +1,24 @@
+{
+  "name": "@try-embedded/simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Arduino-style interpreter, board models and circuit logic shared by the web app and the grader",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "bin": {
+    "try-embedded-run": "./bin/run.mjs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

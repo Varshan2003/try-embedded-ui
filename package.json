@@ -1,0 +1,19 @@
+{
+  "name": "try-embedded",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Try Embedded frontend: the SiliconLab web app and the simulator it shares with the grader",
+  "workspaces": [
+    "simulator",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
+    "start": "npm run start --workspace web",
+    "test": "npm test --workspace simulator && npm run typecheck --workspace web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -19,9 +19,49 @@ The central learning loop is:
 For the complete simulator, interview-platform, architecture, and delivery
 backlog, see [IMPROVEMENTS.md](IMPROVEMENTS.md).
 
+## Architecture
+
+Try Embedded is two services in two repositories, plus one shared library.
+
+| Piece | Where | What it owns |
+|---|---|---|
+| Frontend | this repo, [web/](web/) | React app: editor, circuit canvas, live simulation, challenge UI |
+| Simulator | this repo, [simulator/](simulator/) | Interpreter, board models, circuit logic and a headless runner |
+| Backend | `try-embedded-backend` repo | Python (FastAPI): accounts, projects, challenges, grading, progress |
+
+The interactive simulation runs entirely in the browser. To grade a challenge
+the backend runs the same simulator package headlessly through
+[simulator/bin/run.mjs](simulator/bin/run.mjs), so hidden tests never reach the
+client and both sides agree on behaviour.
+
+## Run locally
+
+Requires Node.js 20 or newer.
+
+```sh
+npm install
+npm test        # simulator tests and frontend typecheck
+npm run dev     # http://127.0.0.1:5173
+```
+
+The simulator and local sketches work with no backend. Challenges, accounts and
+grading need the API from the `try-embedded-backend` repo running on port 8000; the
+dev server proxies `/api` to it (override with `API_PROXY_TARGET`).
+
+For production, build with `VITE_API_URL` set to the API's origin, then serve
+the result with security headers:
+
+```sh
+VITE_API_URL=https://api.example.com npm run build
+API_ORIGIN=https://api.example.com npm start    # http://127.0.0.1:4173
+```
+
+The original single-file and vanilla-JS prototypes are kept in
+[legacy/](legacy/) for reference only.
+
 ## Current prototype
 
-Implemented in `html.html`:
+Implemented in [web/](web/) and [simulator/](simulator/):
 
 - In-browser Arduino-style C/C++ interpreter
 - Arduino Uno, Nano, and Mega board targets

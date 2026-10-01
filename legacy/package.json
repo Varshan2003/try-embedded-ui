@@ -1,0 +1,14 @@
+{
+  "name": "try-embedded",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interview-first embedded systems simulator and learning platform",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check simulator.js && node --check app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Try Embedded | SiliconLab</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div id="boot-overlay">Starting SiliconLab…</div>
+
+<header class="toolbar" role="banner">
+  <div class="brand"><b>SiliconLab</b><span>arduino simulator</span></div>
+
+  <button class="icon-btn" id="btn-toggle-left" title="Toggle project panel (Alt+B toggles the bottom panel)" aria-expanded="true" aria-label="Toggle project panel">☰</button>
+
+  <label class="visually-hidden" for="board-select">Board</label>
+  <select id="board-select" title="Target board">
+    <option value="uno">Arduino Uno</option>
+    <option value="nano">Arduino Nano</option>
+    <option value="mega">Arduino Mega 2560</option>
+  </select>
+
+  <input type="text" id="project-name" aria-label="Sketch name" title="Sketch name">
+
+  <button class="btn" id="btn-compile" title="Compile (Ctrl+B)"><span id="compile-icon"></span><span>Compile</span></button>
+  <button class="btn primary" id="btn-run" title="Run or pause (Ctrl+Enter)" aria-pressed="false"><span id="run-icon"></span><span id="run-label">Run</span></button>
+  <button class="btn" id="btn-step" title="Step one statement while paused" disabled><span id="step-icon"></span><span>Step</span></button>
+  <button class="btn" id="btn-reset" title="Reset simulation (Ctrl+Alt+R)"><span id="reset-icon"></span><span>Reset</span></button>
+
+  <div class="group" role="group" aria-label="Simulation speed">
+    <span id="speed-menu">
+      <button data-speed="0.25" role="radio" aria-checked="false" title="Quarter speed">0.25x</button>
+      <button data-speed="0.5" role="radio" aria-checked="false" title="Half speed">0.5x</button>
+      <button data-speed="1" role="radio" aria-checked="true" title="Real time">1x</button>
+      <button data-speed="2" role="radio" aria-checked="false" title="Double speed">2x</button>
+      <button data-speed="4" role="radio" aria-checked="false" title="Quadruple speed">4x</button>
+    </span>
+    <span class="visually-hidden" id="speed-value">1x</span>
+  </div>
+
+  <div class="group" id="snapshot-group">
+    <button class="icon-btn" id="btn-snapshot" title="Capture pin and component state" aria-label="Capture state snapshot">◉</button>
+    <button class="icon-btn" id="btn-restore" title="Restore the captured state" aria-label="Restore state snapshot" disabled>↺</button>
+  </div>
+
+  <span class="spacer"></span>
+  <span class="clock" id="sim-clock" title="Simulated time">0.00 s</span>
+  <span class="clock" id="sim-ops"></span>
+  <span id="status-badge" data-status="idle" role="status">Idle</span>
+  <button class="icon-btn" id="btn-help" title="Keyboard shortcuts and simulator limits" aria-label="Help">?</button>
+  <button class="icon-btn" id="btn-toggle-right" title="Toggle inspector" aria-expanded="true" aria-label="Toggle inspector">◧</button>
+</header>
+
+<main>
+  <aside class="sidebar" aria-label="Projects and parts">
+    <div class="side-head"><span>sketches</span>
+      <span>
+        <button class="icon-btn small" id="btn-new" title="New sketch" aria-label="New sketch">+</button>
+        <button class="icon-btn small" id="btn-save" title="Save sketch (Ctrl+S)" aria-label="Save sketch">⤓</button>
+      </span>
+    </div>
+    <div id="project-list"></div>
+
+    <div class="side-head"><span>templates</span></div>
+    <div id="template-list"></div>
+
+    <div class="side-head"><span>parts</span></div>
+    <div id="palette"></div>
+
+    <div class="side-head"><span>transfer</span></div>
+    <div style="padding:2px 8px 12px;display:flex;flex-wrap:wrap;gap:6px">
+      <button class="btn small" id="btn-share" title="Copy a shareable link to the clipboard">Share link</button>
+      <button class="btn small" id="btn-export" title="Copy this project as JSON">Export</button>
+      <button class="btn small" id="btn-import" title="Paste project JSON">Import</button>
+    </div>
+    <p class="hint" id="autosave">autosave on</p>
+  </aside>
+
+  <section class="workspace">
+    <div class="split">
+      <div class="pane">
+        <div class="pane-head"><span>sketch.ino</span><span class="spacer"></span><span id="code-stats"></span></div>
+        <div class="editor-wrap">
+          <div id="gutter" aria-hidden="true"></div>
+          <div class="code-area">
+            <pre id="highlight" aria-hidden="true"></pre>
+            <textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Arduino source code"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane">
+        <div class="pane-head">
+          <span>circuit</span>
+          <span class="spacer"></span>
+          <button class="icon-btn small" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
+          <button class="icon-btn small" id="btn-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
+          <button class="icon-btn small" id="btn-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+          <span id="zoom-value" style="font-size:10.5px;min-width:34px;text-align:center">100%</span>
+          <button class="icon-btn small" id="btn-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+          <button class="icon-btn small" id="btn-zoom-reset" title="Reset view" aria-label="Reset view">⤢</button>
+        </div>
+        <div id="canvas">
+          <div id="canvas-content">
+            <svg id="wires" aria-hidden="true"></svg>
+            <div id="nodes"></div>
+          </div>
+          <p id="canvas-hint" role="status"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="tabbar" role="tablist" aria-label="Simulation panels">
+        <button class="tab" role="tab" data-tab="serial" aria-selected="true" aria-controls="panel-serial" title="Serial Monitor (Alt+1)">Serial Monitor</button>
+        <button class="tab" role="tab" data-tab="compiler" aria-selected="false" aria-controls="panel-compiler" title="Compiler Output (Alt+2)">Compiler Output</button>
+        <button class="tab" role="tab" data-tab="pins" aria-selected="false" aria-controls="panel-pins" title="Pin States (Alt+3)">Pin States</button>
+        <button class="tab" role="tab" data-tab="events" aria-selected="false" aria-controls="panel-events" title="Event Timeline (Alt+4)">Event Timeline</button>
+        <span class="tab-tools">
+          <span id="compiler-count"></span>
+          <label><input type="checkbox" id="serial-autoscroll" checked> autoscroll</label>
+          <label><input type="checkbox" id="serial-timestamps"> timestamps</label>
+          <button class="icon-btn small" id="serial-clear" title="Clear serial output" aria-label="Clear serial output">⌫</button>
+          <button class="icon-btn small" id="events-clear" title="Clear event timeline" aria-label="Clear event timeline">✕</button>
+          <button class="icon-btn small" id="btn-toggle-bottom" title="Collapse panel (Alt+B)" aria-expanded="true" aria-label="Collapse bottom panel">▾</button>
+        </span>
+      </div>
+
+      <div class="tab-panel" id="panel-serial" data-panel="serial" role="tabpanel">
+        <div id="serial-body" aria-live="polite"></div>
+        <form id="serial-send" style="display:flex;gap:6px;margin-top:8px">
+          <input type="text" id="serial-input" placeholder="send to Serial.read()" aria-label="Serial input" style="flex:1">
+          <button class="btn small" type="submit">Send</button>
+        </form>
+      </div>
+      <div class="tab-panel" id="panel-compiler" data-panel="compiler" role="tabpanel" hidden><div id="compiler-body"></div></div>
+      <div class="tab-panel" id="panel-pins" data-panel="pins" role="tabpanel" hidden><div id="pins-body"></div></div>
+      <div class="tab-panel" id="panel-events" data-panel="events" role="tabpanel" hidden><div id="events-body"></div></div>
+    </div>
+  </section>
+
+  <aside class="inspector" aria-label="Inspector">
+    <div class="side-head"><span>inspector</span></div>
+    <div id="inspector-body"></div>
+  </aside>
+</main>
+
+<div id="toasts" aria-live="polite"></div>
+
+<div id="crash" hidden role="alert">
+  <strong>Something broke in the interface.</strong>
+  <p class="crash-msg" style="margin:4px 0 0;font-family:ui-monospace,Menlo,monospace;font-size:12px"></p>
+  <p style="margin:6px 0 0;font-size:12px">Your sketches are saved. Reload the page to continue.</p>
+</div>
+
+<dialog id="import-dialog">
+  <div class="dialog-head">Import project JSON</div>
+  <div class="dialog-body">
+    <p class="hint" style="padding:0 0 8px">Paste the JSON produced by Export.</p>
+    <textarea id="import-text" aria-label="Project JSON"></textarea>
+  </div>
+  <div class="dialog-foot">
+    <button class="btn" data-close>Cancel</button>
+    <button class="btn primary" id="import-confirm">Import</button>
+  </div>
+</dialog>
+
+<dialog id="help-dialog">
+  <div class="dialog-head">Shortcuts and simulator scope</div>
+  <div class="dialog-body">
+    <div class="shortcuts">
+      <kbd>Ctrl/Cmd B</kbd><span>Compile</span>
+      <kbd>Ctrl/Cmd Enter</kbd><span>Run or pause</span>
+      <kbd>Ctrl/Cmd S</kbd><span>Save sketch</span>
+      <kbd>Ctrl/Cmd Alt R</kbd><span>Reset simulation</span>
+      <kbd>Ctrl/Cmd Z</kbd><span>Undo circuit change</span>
+      <kbd>Alt 1–4</kbd><span>Switch bottom panel</span>
+      <kbd>Alt B</kbd><span>Collapse bottom panel</span>
+      <kbd>R</kbd><span>Rotate selected part</span>
+      <kbd>Delete</kbd><span>Delete selected part</span>
+      <kbd>Ctrl + wheel</kbd><span>Zoom canvas</span>
+    </div>
+    <p class="hint" style="padding:12px 0 0">Wiring: click a component terminal, then click a board pin. Drag the canvas background to pan.</p>
+    <p class="hint" style="padding:6px 0 0">The interpreter covers the Arduino core: pin, timing, PWM, interrupt, tone and Serial functions, plus the Servo class. Pointer arithmetic, classes, structs, and third-party libraries beyond Servo are not implemented, and I2C/SPI calls are logged to the event timeline rather than simulated at the bus level.</p>
+  </div>
+  <div class="dialog-foot"><button class="btn primary" data-close>Close</button></div>
+</dialog>
+
+<script src="./simulator.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
