@@ -25,7 +25,7 @@ function Overview() {
       <a className="home-card" href="#/embedded-c">
         <div className="home-card-text">
           <h2>Embedded C</h2>
-          <p>Eleven guides with runnable examples and a bank of graded practice problems, from bit manipulation to ring buffers, CRCs and state machines.</p>
+          <p>A course that starts from zero. Short guides with examples you can run, and graded practice problems, from your first function to ring buffers, CRCs and state machines.</p>
         </div>
         <span className="home-card-go">Learn and practise →</span>
       </a>

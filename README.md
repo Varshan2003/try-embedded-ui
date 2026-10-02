@@ -38,7 +38,9 @@ client and both sides agree on behaviour.
 
 `#/embedded-c` holds the lessons and the practice problems for embedded C.
 
-- **Guides.** Eleven lessons and a quick reference, written in Markdown in
+- **Guides.** Eighteen lessons and a quick reference, in two tracks: seven
+  that start from no programming experience at all, then eleven on embedded
+  C proper. They are written in Markdown in
   [web/src/content/guides/](web/src/content/guides/) and listed in
   [web/src/embedded-c/guides.ts](web/src/embedded-c/guides.ts). A code block
   fenced as `c run` becomes an editable example with a Run button, `quiz` a
@@ -115,8 +117,9 @@ Implemented in [web/](web/) and [simulator/](simulator/):
 - Local autosave, project duplication, import/export, shareable project links,
 	and state snapshots
 - Responsive layout and keyboard shortcuts
-- Embedded C section: eleven guides with runnable examples, knowledge checks and
-	interview questions; a quick reference; 136 graded practice problems with
+- Embedded C section: eighteen guides, starting from zero, with runnable
+	examples, knowledge checks and interview questions; a quick reference; 188
+	graded practice problems with
 	hints, hidden tests and reference solutions; and a C playground
 
 These are the foundation of the SiliconLab simulation experience, not yet the

@@ -640,6 +640,16 @@ a.home-card:hover { border-color: var(--cyan); }
 .home-inner.wide { max-width: 1100px; padding-top: 32px; }
 .ec-hero h1 { margin: 0 0 10px; font-size: 34px; line-height: 1.15; letter-spacing: -.4px; }
 .ec-hero p { margin: 0; max-width: 68ch; color: var(--text-dim); font-size: 16px; }
+.ec-next {
+  display: inline-flex; flex-direction: column; gap: 2px;
+  margin-top: 20px; padding: 11px 18px;
+  border: 1px solid var(--accent-line); border-radius: 8px;
+  background: var(--accent-bg); color: var(--cyan); text-decoration: none;
+}
+.ec-next:hover { background: var(--accent-bg-hover); }
+.ec-next-label { font-weight: 650; font-size: 15px; }
+.ec-next-detail { font-size: 13px; color: var(--text); }
+.ec-track-note { margin: -4px 0 14px; color: var(--text-dim); font-size: 14px; }
 .ec-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 36px 0 12px; }
 .ec-section-head .home-section-title { margin: 0; }
 .ec-meta { margin: 0; color: var(--text-dim); font-size: 12px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }

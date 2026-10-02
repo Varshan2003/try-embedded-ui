@@ -12,6 +12,11 @@ export function Progress({ done, total }: { done: number; total: number }) {
   );
 }
 
+const TRACKS = [
+  { id: 'foundations', title: 'Start here: C from zero', note: 'No programming experience needed. Work through these in order.' },
+  { id: 'core', title: 'Embedded C', note: 'The C that firmware is built from. Assumes the track above, or that you already know basic C.' },
+] as const;
+
 export function Hub() {
   const practice = usePractice();
   useEffect(() => { void practice.loadCatalogue(); }, [practice]);
@@ -23,33 +28,58 @@ export function Hub() {
     return { level, total: set.length, done: practice.solvedCount(set) };
   });
 
+  // The path through the course: read a guide, solve its problems, move to the next guide.
+  let next: { href: string; label: string; detail: string } | null = null;
+  for (const g of GUIDES) {
+    if (!practice.isRead(g.id)) {
+      next = { href: `#/embedded-c/learn/${g.id}`, label: read === 0 && solved === 0 ? 'Start the course' : 'Continue', detail: `Read: ${g.title}` };
+      break;
+    }
+    const todo = practice.problemsIn(g.id).find(p => !practice.isSolved(p.id));
+    if (todo) {
+      next = { href: `#/embedded-c/practice/${todo.id}`, label: 'Continue', detail: `Practise: ${todo.title}` };
+      break;
+    }
+  }
+
   return (
     <>
       <div className="ec-hero">
         <h1>Embedded C</h1>
-        <p>Learn the C that firmware is written in, then prove it. Every lesson has examples you can edit and run, and every problem is checked against hidden tests on a simulated 32-bit microcontroller that catches the memory bugs a real board would let through.</p>
+        <p>Go from never having written a line of code to writing the C that firmware is built from. Read a short guide, run and change its examples, then solve the problems for that guide. Your code runs on a simulated 32-bit microcontroller that explains your mistakes instead of crashing.</p>
+        {next && (
+          <a className="ec-next" href={next.href}>
+            <span className="ec-next-label">{next.label} →</span>
+            <span className="ec-next-detail">{next.detail}</span>
+          </a>
+        )}
       </div>
 
-      <div className="ec-section-head">
-        <h2 className="home-section-title">Learn</h2>
-        <span className="ec-meta">{read} of {GUIDES.length} guides read</span>
-      </div>
-      <div className="ec-grid">
-        {GUIDES.map((g, i) => {
-          const set = practice.problemsIn(g.id);
-          return (
-            <a key={g.id} className="ec-card" href={`#/embedded-c/learn/${g.id}`}>
-              <span className="ec-card-index">{String(i + 1).padStart(2, '0')}{practice.isRead(g.id) && <span className="ec-read"> · read</span>}</span>
-              <h3>{g.title}</h3>
-              <p>{g.summary}</p>
-              <span className="ec-card-foot">
-                <span>{g.minutes} min</span>
-                {set.length > 0 && <Progress done={practice.solvedCount(set)} total={set.length} />}
-              </span>
-            </a>
-          );
-        })}
-      </div>
+      {TRACKS.map(track => (
+        <section key={track.id}>
+          <div className="ec-section-head">
+            <h2 className="home-section-title">{track.title}</h2>
+            {track.id === 'foundations' && <span className="ec-meta">{read} of {GUIDES.length} guides read</span>}
+          </div>
+          <p className="ec-track-note">{track.note}</p>
+          <div className="ec-grid">
+            {GUIDES.filter(g => g.track === track.id).map(g => {
+              const set = practice.problemsIn(g.id);
+              return (
+                <a key={g.id} className="ec-card" href={`#/embedded-c/learn/${g.id}`}>
+                  <span className="ec-card-index">{String(GUIDES.indexOf(g) + 1).padStart(2, '0')}{practice.isRead(g.id) && <span className="ec-read"> · read</span>}</span>
+                  <h3>{g.title}</h3>
+                  <p>{g.summary}</p>
+                  <span className="ec-card-foot">
+                    <span>{g.minutes} min</span>
+                    {set.length > 0 && <Progress done={practice.solvedCount(set)} total={set.length} />}
+                  </span>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      ))}
 
       <div className="ec-section-head"><h2 className="home-section-title">Practice</h2></div>
       <a className="home-card" href="#/embedded-c/practice">

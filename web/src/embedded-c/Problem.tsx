@@ -4,6 +4,7 @@ import { api, ApiError, type Problem, type ProblemReview, type ProblemTestResult
 import { CodeEditor } from '../components/CodeEditor';
 import { CodeBlock, Inline, Markdown } from '../md';
 import { store } from '../store';
+import { guideById } from './guides';
 import { describeError, usePractice } from './practice';
 
 type Tab = 'description' | 'hints' | 'solution';
@@ -195,7 +196,7 @@ function Workspace({ problem }: { problem: Problem }) {
               <CodeBlock code={review.solution.trimEnd()} />
               {review.notes.trim() && (
                 <aside className="md-callout md-callout-interview">
-                  <span className="md-callout-label">In an interview</span>
+                  <span className="md-callout-label">{guideById(problem.topic)?.track === 'foundations' ? 'Worth knowing' : 'In an interview'}</span>
                   <p><Inline text={review.notes.trim()} /></p>
                 </aside>
               )}
