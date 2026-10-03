@@ -187,13 +187,18 @@ export interface CRunResult {
   exitCode: number | null;
   error: { message: string; line: number | null; file: string | null; phase: 'compile' | 'run' } | null;
   diagnostics: CDiagnostic[];
+  /** What the run cost on the simulated chip. */
   ops: number;
+  stackBytes: number;
+  heapBytes: number;
 }
 
-/** Runs a complete C program (one that defines main) in the interpreter. */
-export function runC(spec: { code: string; maxOps?: number }): CRunResult;
+/** Runs a complete C program (one that defines main) in the interpreter. `stdin` feeds getchar, fgets and scanf. */
+export function runC(spec: { code: string; maxOps?: number; stdin?: string }): CRunResult;
 
-export interface CTest { name: string; code: string; expect: string }
+export interface CTest { name: string; code: string; expect: string; stdin?: string }
+/** Caps on what a passing test may cost; a correct answer that exceeds one fails. */
+export interface CLimits { ops?: number | null; stackBytes?: number | null; heapBytes?: number | null }
 export interface CForbidRule { words: string[]; message: string }
 
 export interface CTestSpec {
@@ -205,9 +210,13 @@ export interface CTestSpec {
   tests: CTest[];
   forbid?: CForbidRule[];
   maxOps?: number;
+  limits?: CLimits | null;
 }
 
-export interface CTestOutcome { name: string; passed: boolean; stdout: string; expected: string; error: string | null; line?: number | null }
+export interface CTestOutcome {
+  name: string; passed: boolean; stdout: string; expected: string; error: string | null; line?: number | null;
+  ops: number; stackBytes: number; heapBytes: number;
+}
 
 export interface CTestResult { compiled: boolean; diagnostics: CDiagnostic[]; tests: CTestOutcome[] }
 

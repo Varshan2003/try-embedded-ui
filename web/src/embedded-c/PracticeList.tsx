@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { guideById } from './guides';
+import { TRACKS, guideById, problemTrack, type Track } from './guides';
 import { Progress } from './Hub';
 import { usePractice } from './practice';
 
@@ -11,12 +11,17 @@ export function PracticeList() {
   const [difficulty, setDifficulty] = useState('all');
   const [topic, setTopic] = useState('all');
   const [status, setStatus] = useState<Status>('all');
+  const [level, setLevel] = useState<'all' | Track>('all');
   useEffect(() => { void practice.loadCatalogue(); }, [practice]);
 
   const catalogue = practice.catalogue;
   const q = query.trim().toLowerCase();
-  const visible = (catalogue?.problems ?? []).filter(p =>
-    (difficulty === 'all' || p.difficulty === difficulty)
+  // Every problem, beginner topics first, in the order the API serves them.
+  const problems = catalogue?.problems ?? [];
+  const topics = (catalogue?.topics ?? []).filter(t => problems.some(p => p.topic === t.id));
+  const visible = problems.filter(p =>
+    (level === 'all' || problemTrack(p) === level)
+    && (difficulty === 'all' || p.difficulty === difficulty)
     && (topic === 'all' || p.topic === topic)
     && (status === 'all' || (status === 'solved') === practice.isSolved(p.id))
     && (!q || [p.title, p.summary, ...p.tags].some(t => t.toLowerCase().includes(q))));
@@ -24,7 +29,6 @@ export function PracticeList() {
   if (!catalogue) {
     return (
       <>
-        <a className="guide-back" href="#/embedded-c">← Embedded C</a>
         <h1 className="ec-title">Practice</h1>
         {practice.error
           ? <div className="ec-notice" role="alert"><p>{practice.error}</p><button className="btn" onClick={() => void practice.loadCatalogue(true)}>Try again</button></div>
@@ -33,23 +37,27 @@ export function PracticeList() {
     );
   }
 
-  const next = catalogue.problems.find(p => !practice.isSolved(p.id));
+  const next = problems.find(p => !practice.isSolved(p.id));
   return (
     <>
-      <a className="guide-back" href="#/embedded-c">← Embedded C</a>
       <div className="ec-list-head">
         <div>
           <h1 className="ec-title">Practice</h1>
-          <p className="ec-meta">{practice.solvedCount(catalogue.problems)} of {catalogue.problems.length} solved across {catalogue.topics.length} topics</p>
+          <p className="ec-meta">{practice.solvedCount(problems)} of {problems.length} solved across {topics.length} topics</p>
         </div>
-        {next && <a className="btn primary" href={`#/embedded-c/practice/${next.id}`}>Continue: {next.title} →</a>}
+        {next && <a className="btn primary" href={`#/practice/${next.id}`}>Continue: {next.title} →</a>}
       </div>
 
       <div className="ec-filters">
         <input type="text" placeholder="Search problems and tags" aria-label="Search problems" value={query} onChange={e => setQuery(e.target.value)} />
+        <select aria-label="Level" value={level} onChange={e => setLevel(e.target.value as 'all' | Track)}>
+          <option value="all">All levels</option>
+          <option value="foundations">Beginner · {TRACKS.foundations.title}</option>
+          <option value="core">Interview · {TRACKS.core.title}</option>
+        </select>
         <select aria-label="Topic" value={topic} onChange={e => setTopic(e.target.value)}>
           <option value="all">All topics</option>
-          {catalogue.topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          {topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
         <select aria-label="Difficulty" value={difficulty} onChange={e => setDifficulty(e.target.value)}>
           <option value="all">Any difficulty</option>
@@ -65,7 +73,7 @@ export function PracticeList() {
       </div>
 
       {visible.length === 0 && <p className="ec-empty">No problems match these filters.</p>}
-      {catalogue.topics.map(t => {
+      {topics.map(t => {
         const rows = visible.filter(p => p.topic === t.id);
         if (!rows.length) return null;
         const all = practice.problemsIn(t.id);
@@ -78,13 +86,13 @@ export function PracticeList() {
               </div>
               <div className="ec-topic-side">
                 <Progress done={practice.solvedCount(all)} total={all.length} />
-                {guideById(t.id) && <a href={`#/embedded-c/learn/${t.id}`}>Read the guide</a>}
+                {guideById(t.id) && <a href={`#/learn/${t.id}`}>Read the guide</a>}
               </div>
             </header>
             <ul className="ec-rows">
               {rows.map(p => (
                 <li key={p.id}>
-                  <a className="ec-row" href={`#/embedded-c/practice/${p.id}`}>
+                  <a className="ec-row" href={`#/practice/${p.id}`}>
                     <span className={'ec-check' + (practice.isSolved(p.id) ? ' done' : '')} aria-label={practice.isSolved(p.id) ? 'Solved' : 'Not solved'} />
                     <span className="ec-row-text">
                       <span className="ec-row-title">{p.title}</span>

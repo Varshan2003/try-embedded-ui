@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Inline, Markdown, parseMarkdown, type Block } from '../md';
-import { GUIDES, QUICK_REFERENCE, guideById } from './guides';
+import { GUIDES, QUICK_REFERENCE, TRACKS, guideById } from './guides';
 import { usePractice } from './practice';
 import { Runnable } from './Runnable';
 
@@ -63,18 +63,20 @@ export function GuidePage({ id }: { id: string }) {
   const sections = useMemo(() => (guide ? parseMarkdown(guide.source).filter(b => b.kind === 'heading' && b.level === 2) : []), [guide]);
 
   if (!guide) {
-    return <p className="ec-empty">There is no guide called “{id}”. <a href="#/embedded-c">Back to Embedded C</a></p>;
+    return <p className="ec-empty">There is no guide called “{id}”. <a href="#/learn">Back to Learn</a></p>;
   }
-  const index = GUIDES.indexOf(guide);
-  const previous = index > 0 ? GUIDES[index - 1] : null;
-  const next = index >= 0 && index < GUIDES.length - 1 ? GUIDES[index + 1] : null;
+  // Guides are numbered within their own track; previous and next stay inside it.
+  const track = GUIDES.filter(g => g.track === guide.track);
+  const index = track.indexOf(guide);
+  const previous = index > 0 ? track[index - 1] : null;
+  const next = index >= 0 && index < track.length - 1 ? track[index + 1] : null;
   const problems = practice.problemsIn(guide.id);
   const read = practice.isRead(guide.id);
 
   return (
     <div className="guide">
       <nav className="guide-toc" aria-label="On this page">
-        <a className="guide-back" href="#/embedded-c">← Embedded C</a>
+        <a className="guide-back" href="#/learn">← {TRACKS[guide.track].title}</a>
         <span className="guide-toc-title">On this page</span>
         {sections.map(s => s.kind === 'heading' && (
           <button key={s.id} className="guide-toc-link" onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
@@ -83,7 +85,7 @@ export function GuidePage({ id }: { id: string }) {
         ))}
       </nav>
       <article className="guide-body">
-        <p className="ec-meta">{index >= 0 ? `Guide ${index + 1} of ${GUIDES.length}` : 'Reference'} · {guide.minutes} min read</p>
+        <p className="ec-meta">{index >= 0 ? `${TRACKS[guide.track].title} · guide ${index + 1} of ${track.length}` : 'Reference'} · {guide.minutes} min read</p>
         <h1>{guide.title}</h1>
         <p className="guide-lede">{guide.summary}</p>
         <Markdown source={guide.source} renderCode={renderCode} />
@@ -94,7 +96,7 @@ export function GuidePage({ id }: { id: string }) {
             <ul className="guide-problems">
               {problems.map(p => (
                 <li key={p.id}>
-                  <a href={`#/embedded-c/practice/${p.id}`}>
+                  <a href={`#/practice/${p.id}`}>
                     <span className={'ec-check' + (practice.isSolved(p.id) ? ' done' : '')} aria-label={practice.isSolved(p.id) ? 'Solved' : 'Not solved'} />
                     <span className="guide-problem-title">{p.title}</span>
                     <span className={`ec-badge ec-${p.difficulty}`}>{p.difficulty}</span>
@@ -111,8 +113,8 @@ export function GuidePage({ id }: { id: string }) {
               <input type="checkbox" checked={read} onChange={e => practice.setRead(guide.id, e.target.checked)} /> I have read this guide
             </label>
             <span className="spacer" />
-            {previous && <a className="btn" href={`#/embedded-c/learn/${previous.id}`}>← {previous.title}</a>}
-            {next && <a className="btn primary" href={`#/embedded-c/learn/${next.id}`}>{next.title} →</a>}
+            {previous && <a className="btn" href={`#/learn/${previous.id}`}>← {previous.title}</a>}
+            {next && <a className="btn primary" href={`#/learn/${next.id}`}>{next.title} →</a>}
           </footer>
         )}
       </article>

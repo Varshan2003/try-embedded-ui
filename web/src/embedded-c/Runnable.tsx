@@ -18,6 +18,11 @@ export function RunOutput({ result }: { result: CRunResult }) {
       {warnings.map((w, i) => (
         <p key={i} className="run-warning"><span className="run-tag">warning</span>{w.message}{w.line ? ` (line ${w.line})` : ''}</p>
       ))}
+      {result.compiled && (
+        <p className="run-cost" title="Measured on the simulated chip">
+          {result.ops.toLocaleString('en-US')} steps · {result.stackBytes.toLocaleString('en-US')} B stack{result.heapBytes > 0 && ` · ${result.heapBytes.toLocaleString('en-US')} B heap`}
+        </p>
+      )}
     </div>
   );
 }

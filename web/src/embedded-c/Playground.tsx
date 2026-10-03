@@ -5,6 +5,7 @@ import { practice } from './practice';
 import { RunOutput } from './Runnable';
 
 const DRAFT = '__playground';
+const INPUT = '__playground_stdin';
 const STARTER = `#include <stdio.h>
 #include <stdint.h>
 
@@ -29,18 +30,24 @@ export function Playground() {
   const [code, setCode] = useState(() => practice.draft(DRAFT) ?? STARTER);
   const [result, setResult] = useState<CRunResult | null>(null);
   const edit = (value: string) => { setCode(value); practice.setDraft(DRAFT, value === STARTER ? null : value); };
-  const run = () => setResult(runC({ code }));
+  const [stdin, setStdin] = useState(() => practice.draft(INPUT) ?? '');
+  const editInput = (value: string) => { setStdin(value); practice.setDraft(INPUT, value || null); };
+  const run = () => setResult(runC({ code, stdin }));
   return (
     <div className="pw pw-single" role="main">
       <section className="pw-main" aria-label="Playground">
         <div className="pane-head">
-          <a href="#/embedded-c">← Embedded C</a>
+          <a href="#/learn">← Learn</a>
           <span>playground.c</span>
           <span className="spacer" />
           <button className="btn small" onClick={() => { edit(STARTER); setResult(null); }}>Reset</button>
           <button className="btn small primary" onClick={run} title="Run (Ctrl+Enter)">Run</button>
         </div>
         <CodeEditor value={code} onChange={edit} label="Playground code" errorLine={result?.error?.line} onRun={run} />
+        <label className="pw-stdin">
+          Input, read by <code>scanf</code>, <code>getchar</code> and <code>fgets</code>
+          <textarea value={stdin} onChange={e => editInput(e.target.value)} placeholder="Leave empty if the program reads nothing" spellCheck={false} />
+        </label>
         <div className="pw-results">
           {result
             ? <RunOutput result={result} />

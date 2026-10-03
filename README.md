@@ -36,7 +36,12 @@ client and both sides agree on behaviour.
 
 ## Embedded C section
 
-`#/embedded-c` holds the lessons and the practice problems for embedded C.
+The site has three sections in its top bar: **Learn** (`#/learn`), **Practice**
+(`#/practice`) and **Simulate** (the lab, `#/lab`). The home page at `#/` uses
+the Try Embedded brand: the mark is drawn inline in
+[web/src/components/Logo.tsx](web/src/components/Logo.tsx) so its ink follows
+the theme, with a copy in [web/src/assets/logo.svg](web/src/assets/logo.svg)
+for the favicon. Old `#/embedded-c/...` links redirect to the new addresses.
 
 - **Guides.** Eighteen lessons and a quick reference, in two tracks: seven
   that start from no programming experience at all, then eleven on embedded
@@ -50,7 +55,21 @@ client and both sides agree on behaviour.
   the visible examples in the browser; Submit sends the code to the API, which
   also runs the hidden tests. A guide and a practice topic share an id, so each
   guide lists its own problems.
-- **Playground.** A scratch file at `#/embedded-c/playground`.
+- **Playground.** A scratch file at `#/learn/playground`, with a box for
+  the text the program reads from standard input.
+
+- **Theory questions.** Two hundred spoken-interview questions with answers at
+  `#/learn/theory`, searchable and grouped into twelve sections. They are
+  Markdown files in [web/src/content/theory/](web/src/content/theory/): a
+  `# Section` line, then one `## Question` heading per question with the answer
+  below it. A `c run` block in an answer is an editable example, as in a guide.
+  A learner can tick "I can answer this"; that is kept in the browser.
+
+`#/learn` lists both guide tracks as modules (each guide at `#/learn/<id>`,
+with a Start/Continue button that walks the track), followed by the theory
+questions, the quick reference (`#/learn/reference`) and the playground.
+`#/practice` lists every problem, beginner topics first, with filters for
+level, topic, difficulty and status; a problem opens at `#/practice/<id>`.
 
 All three run code in the C interpreter in
 [simulator/src/c/](simulator/src/c/). It models a 32-bit little-endian
@@ -58,20 +77,32 @@ microcontroller: `int`, `long` and pointers are 4 bytes, RAM is 64 KB at
 0x20000000, string literals and functions are in read-only flash at 0x08000000,
 and the peripheral region at 0x40000000 is readable and writable so register
 code can be exercised. Every byte of RAM is tracked, so out-of-bounds accesses,
-use after free, pointers to dead locals, null dereferences, division by zero
-and out-of-range shifts are reported with a line number instead of corrupting
-memory.
+use after free, pointers to dead locals, null dereferences, reads of memory that
+was never given a value, division by zero and out-of-range shifts are reported
+with a line number instead of corrupting memory.
+
+Every run reports what it cost on the simulated chip: statements executed, the
+deepest the stack went and the most heap that was live at once. A problem can
+cap any of the three (see the API README), and a correct answer that goes over
+fails with the measurement.
 
 The interpreter covers the C that firmware uses: the preprocessor, all integer
 and floating types, pointers, arrays, structs, unions, bit-fields, enums,
 function pointers, designated initialisers, compound literals, packed structs
-and the common parts of `<stdio.h>`, `<string.h>`, `<stdlib.h>` and `<ctype.h>`.
-It does not support `goto`, variable-length arrays, user-defined variadic
-functions or reading from standard input, and an uninitialised local holds a
-fixed garbage pattern instead of being reported.
+`goto`, one-dimensional variable-length arrays, variadic functions and macros
+(`<stdarg.h>`, `vprintf` and friends, `__VA_ARGS__`), and the common parts of
+`<stdio.h>`, `<string.h>`, `<stdlib.h>` and `<ctype.h>`, including `scanf`,
+`sscanf`, `getchar` and `fgets` on standard input.
 
-`npm test` also runs every runnable example in the guides and checks every
-quiz, so a guide cannot ship with an example that fails.
+It does not support multi-dimensional variable-length arrays, `FILE` streams
+other than standard input and output, or `%[` in `scanf`. Writing one bit-field
+marks its whole storage unit as initialised, so an unset neighbouring bit-field
+is not reported. The API repo checks the interpreter against a real compiler:
+see "Fidelity" in its README.
+
+`npm test` also runs every runnable example in the guides and the theory
+answers, checks every quiz, and checks that every theory question is unique and
+has an answer, so neither can ship with an example that fails.
 
 ## Run locally
 

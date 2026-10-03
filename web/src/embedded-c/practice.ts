@@ -6,6 +6,7 @@ import { store } from '../store';
 interface Saved {
   solved: string[];
   read: string[];                    // guides marked as read
+  reviewed: string[];                // theory questions the learner can answer
   drafts: Record<string, string>;    // unfinished code per problem
 }
 
@@ -14,7 +15,7 @@ const KEY = 'tryembedded:embedded-c';
 const PROGRESS_PREFIX = 'c:';
 
 function load(): Saved {
-  const empty: Saved = { solved: [], read: [], drafts: {} };
+  const empty: Saved = { solved: [], read: [], reviewed: [], drafts: {} };
   try {
     const raw = localStorage.getItem(KEY);
     return raw ? { ...empty, ...JSON.parse(raw) } : empty;
@@ -68,6 +69,14 @@ class Practice {
   setRead(guide: string, read: boolean) {
     this.saved.read = this.saved.read.filter(g => g !== guide);
     if (read) this.saved.read.push(guide);
+    this.persist();
+    this.emit();
+  }
+
+  isReviewed(question: string) { return this.saved.reviewed.includes(question); }
+  setReviewed(question: string, reviewed: boolean) {
+    this.saved.reviewed = this.saved.reviewed.filter(q => q !== question);
+    if (reviewed) this.saved.reviewed.push(question);
     this.persist();
     this.emit();
   }

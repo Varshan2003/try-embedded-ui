@@ -1,5 +1,8 @@
 import type { CDiagnostic, CForbidRule, CircuitComponent, Diagnostic, Wire } from '@try-embedded/simulator';
 
+// Caps on what a passing test may cost on the simulated chip.
+export interface ProblemLimits { ops: number | null; stack_bytes: number | null; heap_bytes: number | null }
+
 // Empty in development (requests go through the Vite proxy); the API's origin in production.
 const BASE = `${import.meta.env.VITE_API_URL ?? ''}/api`;
 
@@ -61,7 +64,7 @@ export interface ProblemSummary {
 export interface ProblemList { topics: ProblemTopic[]; problems: ProblemSummary[] }
 
 // Hidden tests carry only their name; visible ones also show the call and the output it must print.
-export interface ProblemTest { name: string; hidden: boolean; code: string | null; expect: string | null }
+export interface ProblemTest { name: string; hidden: boolean; code: string | null; expect: string | null; stdin: string | null }
 
 export interface Problem extends ProblemSummary {
   prompt: string;
@@ -71,11 +74,20 @@ export interface Problem extends ProblemSummary {
   tests: ProblemTest[];
   hints: string[];
   forbid: CForbidRule[];
+  limits: ProblemLimits | null;
+  // 'native' problems are compiled by a real compiler when submitted; Run always uses the interpreter.
+  grader: 'interpreter' | 'native';
 }
 
 export interface ProblemReview { solution: string; notes: string }
 
-export interface ProblemTestResult extends TestResult { stdout: string | null; expected: string | null }
+export interface ProblemTestResult extends TestResult {
+  stdout: string | null;
+  expected: string | null;
+  ops: number;
+  stack_bytes: number;
+  heap_bytes: number;
+}
 
 export interface ProblemSubmission {
   problem_id: string;

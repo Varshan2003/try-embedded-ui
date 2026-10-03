@@ -162,3 +162,119 @@ test('a broken program never throws out of the interpreter', () => {
     assert.ok(r.error && r.error.message, code);
   }
 });
+
+test('reading memory that was never given a value is reported', () => {
+  fails('int main(void) { int x; printf("%d", x); return 0; }', /Uninitialised variable: 'x'/);
+  fails('int main(void) { int a[4]; a[0] = 1; return a[2]; }', /Uninitialised memory: read of 4 bytes/);
+  fails('int main(void) { int *p = malloc(8); p[0] = 3; return p[1]; }', /Uninitialised memory/);
+  fails('int main(void) { int total; for (int i = 0; i < 3; i++) total += i; return total; }', /Uninitialised variable: 'total'/);
+  // calloc, initialisers and globals all count as values.
+  assert.equal(out('int g; int main(void) { int a[4] = { 1 }; int *p = calloc(2, 4); static int s; printf("%d %d %d %d", g, a[3], p[1], s); return 0; }'), '0 0 0 0');
+});
+
+test('copying an object may carry bytes that were never set; only using them is an error', () => {
+  const partial = 'typedef struct { uint8_t a; uint32_t b; } pair_t;\npair_t make(void) { pair_t p; p.a = 1; return p; }\n';
+  assert.equal(out(partial + 'int main(void) { pair_t x = make(), y; y = x; pair_t z; memcpy(&z, &y, sizeof z); printf("%d", z.a); return 0; }'), '1');
+  fails(partial + 'int main(void) { pair_t x = make(); return (int)x.b; }', /Uninitialised member: '\.b'/);
+  // Setting one bit-field must not need the rest of its storage unit to be set first.
+  assert.equal(out('typedef struct { uint8_t en:1; uint8_t mode:3; } reg_t; int main(void) { reg_t r; r.en = 1; r.mode = 5; printf("%d %d", r.en, r.mode); return 0; }'), '1 5');
+});
+
+test('goto jumps forwards, backwards, out of nested loops and into a block', () => {
+  assert.equal(out(`int main(void) {
+    int i = 0, rc = -1;
+  again:
+    if (++i < 3) goto again;
+    for (int j = 0; j < 10; j++) for (int k = 0; k < 10; k++) if (j * k == 6) goto found;
+  found:
+    if (i != 3) goto fail;
+    rc = 0;
+    goto inside;
+    while (i < 100) { i += 50; inside: printf("%d ", i); }
+    switch (rc) { case 0: goto fail; default: printf("never "); }
+  fail:
+    printf("rc=%d", rc);
+    return 0; }`), '3 53 103 rc=0');
+  fails('int main(void) { goto nowhere; return 0; }', /has no label 'nowhere:'/);
+  fails('int main(void) { a: ; a: ; return 0; }', /Label 'a' is already defined/);
+  fails('int main(void) { spin: goto spin; }', /ran for too long/);
+});
+
+test('variable-length arrays take their size at run time and give the stack back', () => {
+  const r = runC({ code: `
+    static int total(int n) { int a[n]; for (int i = 0; i < n; i++) a[i] = i; int s = 0; for (int i = 0; i < n; i++) s += a[i]; return s + (int)(sizeof a / sizeof a[0]); }
+    static void first(int n, int a[n]) { a[0] = n; }
+    int main(void) {
+      int q[3]; first(3, q);
+      // Each pass takes 4 KB; without release at the end of the block the 16 KB stack would overflow.
+      for (int pass = 0; pass < 50; pass++) { int n = 1000; int big[n]; big[n - 1] = pass; q[1] = big[n - 1]; }
+      printf("%d %d %d", total(10), q[0], q[1]);
+      return 0; }` });
+  assert.equal(r.error, null, r.error?.message);
+  assert.equal(r.stdout, '55 3 49');
+  assert.match(r.diagnostics[0].message, /variable-length array/);
+  fails('int main(void) { int n = 4; int a[n]; a[4] = 1; return 0; }', /Out-of-bounds access/);
+  fails('int main(void) { int n = 0; int a[n]; return 0; }', /must be positive, but it is 0/);
+  fails('int main(void) { int n = 100000; int a[n]; return 0; }', /Stack overflow: variable-length array 'a'/);
+  fails('int n = 4; int a[n]; int main(void) { return 0; }', /must be a constant/);
+  fails('int main(void) { int n = 2; int a[n] = { 1, 2 }; return 0; }', /cannot have an initialiser/);
+});
+
+test('variadic functions and variadic macros work, and a wrong va_arg is explained', () => {
+  assert.equal(out(`
+    #include <stdarg.h>
+    static int sum(int count, ...) { va_list ap; va_start(ap, count); int s = 0; while (count--) s += va_arg(ap, int); va_end(ap); return s; }
+    static void logline(const char *fmt, ...) { char buf[48]; va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap); printf("[%s]", buf); }
+    static const char *last(int n, ...) { va_list ap, again; va_start(ap, n); va_copy(again, ap); const char *s = 0; for (int i = 0; i < n; i++) s = va_arg(again, const char *); va_end(again); va_end(ap); return s; }
+    #define LOG(fmt, ...) printf("<" fmt ">", ##__VA_ARGS__)
+    #define TRACE(...) printf(__VA_ARGS__)
+    int main(void) { printf("%d ", sum(4, 1, 2, 3, 4)); logline("%d %s %.1f", 5, "ok", 2.5); LOG("plain"); LOG("%d-%d", 1, 2); TRACE(" %s", last(2, "a", "b")); return 0; }`),
+  '10 [5 ok 2.5]<plain><1-2> b');
+  fails('static int f(int n, ...) { va_list ap; va_start(ap, n); return (int)va_arg(ap, double); } int main(void) { return f(1, 5); }', /asked for 'double'.*is 'int'/);
+  fails('static int f(int n, ...) { va_list ap; va_start(ap, n); va_arg(ap, int); return va_arg(ap, int); } int main(void) { return f(1, 5); }', /no argument left/);
+  fails('static int f(int n, ...) { va_list ap; va_start(ap, n); return va_arg(ap, char); } int main(void) { return f(1, 5); }', /promoted to 'int'/);
+  fails('static int f(int n) { va_list ap; va_start(ap, n); return 0; } int main(void) { return f(1); }', /parameter list ends in '...'/);
+});
+
+test('standard input feeds getchar, fgets and scanf', () => {
+  const r = runC({
+    stdin: '42 0x1F hello\nsecond line\nZ',
+    code: `int main(void) {
+      int a; unsigned b; char word[16], line[32];
+      int n = scanf("%d %x %15s", &a, &b, word);
+      getchar();
+      fgets(line, sizeof line, stdin);
+      int c = getchar(), end = getchar();
+      printf("%d %d %u %s|%s%c %d %d", n, a, b, word, line, c, end, scanf("%d", &a) == EOF);
+      return 0; }`,
+  });
+  assert.equal(r.error, null, r.error?.message);
+  assert.equal(r.stdout, '3 42 31 hello|second line\nZ -1 1');
+  assert.equal(out('int main(void) { int x, y; float f; int n = sscanf("7,-8 2.5", "%d,%d %f", &x, &y, &f); printf("%d %d %d %.1f %d", n, x, y, f, getchar()); return 0; }'), '3 7 -8 2.5 -1');
+  // The classic: %d writes four bytes through a pointer to one.
+  const bug = runC({ stdin: '5', code: 'int main(void) { uint8_t v; scanf("%d", &v); return 0; }' });
+  assert.match(bug.error.message, /stores 4 bytes, but the argument points to 'uint8_t'/);
+});
+
+test('each test reports what it cost, and a problem can cap it', () => {
+  const loop = { name: 'loop', code: 'printf("%d\\n", twice(1000));', expect: '2000' };
+  const slow = 'int twice(int x) { int s = 0; for (int i = 0; i < x; i++) s += 2; return s; }';
+  const free = runCTests({ code: slow, tests: [loop] });
+  assert.equal(free.tests[0].passed, true);
+  assert.ok(free.tests[0].ops > 1000 && free.tests[0].stackBytes > 0 && free.tests[0].heapBytes === 0);
+
+  const capped = runCTests({ code: slow, tests: [loop], limits: { ops: 100 } });
+  assert.equal(capped.tests[0].passed, false);
+  assert.match(capped.tests[0].error, /Too slow: this test took [\d,]+ steps and the limit is 100/);
+  assert.equal(runCTests({ code: 'int twice(int x) { return 2 * x; }', tests: [loop], limits: { ops: 100 } }).tests[0].passed, true);
+
+  const deep = 'int twice(int x) { return x == 0 ? 0 : 2 + twice(x - 1); }';
+  assert.match(runCTests({ code: deep, tests: [{ ...loop, code: 'printf("%d\\n", twice(100));', expect: '200' }], limits: { stackBytes: 256 } }).tests[0].error, /Too much stack/);
+  const heap = 'int twice(int x) { int *p = malloc(64); *p = 2 * x; int r = *p; free(p); return r; }';
+  assert.match(runCTests({ code: heap, tests: [loop], limits: { heapBytes: 0 } }).tests[0].error, /without malloc/);
+  // A wrong answer is reported as wrong, not as over the limit.
+  assert.equal(runCTests({ code: 'int twice(int x) { int s = 0; for (int i = 0; i < x; i++) s += 1; return s; }', tests: [loop], limits: { ops: 100 } }).tests[0].error, null);
+
+  const run = runC({ code: 'int main(void) { char *p = malloc(100); free(p); p = malloc(40); free(p); return 0; }' });
+  assert.equal(run.heapBytes, 100);
+});

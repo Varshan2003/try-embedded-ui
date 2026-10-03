@@ -161,6 +161,12 @@ const PREDEFINED = `
 #define PRIu64 "llu"
 #define PRIx64 "llx"
 #define PRIX64 "llX"
+#define EOF (-1)
+#define stdin ((void *)1)
+#define va_start(ap, last) __builtin_va_start(ap, last)
+#define va_arg(ap, type) __builtin_va_arg(ap, type)
+#define va_end(ap) __builtin_va_end(ap)
+#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
 #define assert(c) __assert((c) != 0, #c)
@@ -212,6 +218,14 @@ export function preprocess(tokens, macros = new Map()) {
         j++;
         continue;
       }
+      // The GNU `, ##__VA_ARGS__` idiom: the comma goes away when no variable arguments were given.
+      if (t.k === 'op' && t.v === '##' && body[j + 1]?.v === '__VA_ARGS__' && m.variadic && result[result.length - 1]?.v === ',') {
+        const va = args[params.length - 1];
+        if (va.length === 0) result.pop();
+        else result.push(...expand(va, hide).map(a => ({ ...a, line: at.line, file: at.file })));
+        j++;
+        continue;
+      }
       const pasted = (body[j + 1]?.k === 'op' && body[j + 1].v === '##') || (body[j - 1]?.k === 'op' && body[j - 1].v === '##');
       if (pi >= 0) result.push(...(pasted ? args[pi] : expand(args[pi], hide)).map(a => ({ ...a, line: at.line, file: at.file })));
       else result.push({ ...t, line: at.line, file: at.file });
@@ -238,6 +252,13 @@ export function preprocess(tokens, macros = new Map()) {
       if (!(toks[i + 1]?.k === 'op' && toks[i + 1].v === '(')) { res.push(t); continue; }
       const { args, end } = readArgs(toks, i + 1, t.v, t);
       if (m.params.length === 0 && args.length === 1 && args[0].length === 0) args.length = 0;
+      if (m.variadic) {
+        // Everything from the '...' position on, commas included, becomes __VA_ARGS__.
+        const named = m.params.length - 1;
+        if (args.length < named) fail(`Macro '${t.v}' needs at least ${named} argument${named === 1 ? '' : 's'}, but ${args.length} ${args.length === 1 ? 'was' : 'were'} given`, t);
+        const rest = args.splice(named).flatMap((arg, n) => (n ? [{ k: 'op', v: ',', line: t.line, file: t.file }, ...arg] : arg));
+        args.push(rest);
+      }
       if (args.length !== m.params.length) fail(`Macro '${t.v}' takes ${m.params.length} argument${m.params.length === 1 ? '' : 's'}, but ${args.length} were given`, t);
       res.push(...expand(substitute(m, args, t, hide), inner));
       i = end;
@@ -342,20 +363,21 @@ export function preprocess(tokens, macros = new Map()) {
       case 'define': {
         const id = rest[0];
         if (!id || id.k !== 'id') fail('#define needs a macro name', at);
-        let params = null, bodyStart = 1;
+        let params = null, bodyStart = 1, variadic = false;
         if (rest[1]?.k === 'op' && rest[1].v === '(' && !rest[1].sp) {
           params = [];
           let j = 2;
           while (j < rest.length && !(rest[j].k === 'op' && rest[j].v === ')')) {
+            if (variadic) fail("'...' must be the last macro parameter", at);
             if (rest[j].k === 'id') params.push(rest[j].v);
-            else if (rest[j].v === '...') fail('Variadic macros are not supported', at);
+            else if (rest[j].v === '...') { variadic = true; params.push('__VA_ARGS__'); }
             else if (rest[j].v !== ',') fail(`Unexpected '${spell(rest[j])}' in macro parameter list`, at);
             j++;
           }
           if (j >= rest.length) fail("Missing ')' in macro parameter list", at);
           bodyStart = j + 1;
         }
-        macros.set(id.v, { params, body: rest.slice(bodyStart) });
+        macros.set(id.v, { params, variadic, body: rest.slice(bodyStart) });
         return;
       }
       case 'undef': macros.delete(rest[0]?.v); return;

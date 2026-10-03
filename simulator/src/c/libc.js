@@ -1,6 +1,6 @@
 // The slice of the C standard library the interpreter provides. PROTOTYPES is parsed ahead of
 // every program; BUILTINS implements each function against the machine's memory.
-import { CError, Exit } from './types.js';
+import { CError, Exit, CHAR, SHORT, INT, LLONG, FLOAT, DOUBLE, typeName } from './types.js';
 
 export const PROTOTYPES = `
 typedef signed char int8_t;
@@ -19,12 +19,20 @@ typedef unsigned int uintptr_t;
 typedef long long intmax_t;
 typedef unsigned long long uintmax_t;
 typedef _Bool bool;
+typedef unsigned int va_list;
 
 int printf(const char *format, ...);
 int sprintf(char *dest, const char *format, ...);
 int snprintf(char *dest, size_t size, const char *format, ...);
+int vprintf(const char *format, va_list ap);
+int vsprintf(char *dest, const char *format, va_list ap);
+int vsnprintf(char *dest, size_t size, const char *format, va_list ap);
 int puts(const char *s);
 int putchar(int c);
+int getchar(void);
+char *fgets(char *dest, int size, void *stream);
+int scanf(const char *format, ...);
+int sscanf(const char *text, const char *format, ...);
 
 void *memcpy(void *dest, const void *src, size_t n);
 void *memmove(void *dest, const void *src, size_t n);
@@ -226,6 +234,99 @@ function parseInteger(m, addr, endPtr, base, unsigned) {
   return Number(clamped);
 }
 
+// printf for a va_list: formats the arguments its owner has not consumed yet.
+function vformat(m, fmtAddr, handle, what) {
+  const list = m.vaList(handle, what);
+  const rest = list.args.slice(list.pos);
+  return format(m, fmtAddr, rest.map(x => x.v), rest);
+}
+
+const isSpace = c => c === 32 || (c >= 9 && c <= 13);
+const SCAN_INT = { hh: CHAR, h: SHORT, '': INT, l: INT, ll: LLONG, z: INT, t: INT, j: LLONG };
+
+// scanf-style parsing of `src` ({ bytes, pos }). Returns how many values were stored, or EOF (-1)
+// when the input ran out before the first one.
+function scan(m, src, fmtAddr, args, nodes, what) {
+  const fmt = m.cstr(fmtAddr);
+  const { bytes } = src;
+  let stored = 0, ai = 0;
+  const skipSpace = () => { while (src.pos < bytes.length && isSpace(bytes[src.pos])) src.pos++; };
+  // Where the next value goes, after checking that the pointer is to an object of the size being written.
+  const target = (spec, type) => {
+    if (ai >= args.length) throw m.fault(`${what}: the format needs a pointer for '${spec}', but no argument is left`);
+    const node = nodes[ai], addr = args[ai++];
+    if (node.type.kind !== 'ptr') throw m.fault(`${what}: '${spec}' needs a pointer to store into, but the argument is '${typeName(node.type)}'; did you forget '&'?`);
+    const to = node.type.to;
+    if (type && to.kind !== 'void' && to.size !== type.size) {
+      throw m.fault(`${what}: '${spec}' stores ${type.size} byte${type.size === 1 ? '' : 's'}, but the argument points to '${typeName(to)}', which is ${to.size}`);
+    }
+    return addr;
+  };
+  for (let i = 0; i < fmt.length; i++) {
+    if (isSpace(fmt[i])) { skipSpace(); continue; }
+    if (fmt[i] !== 37) {
+      if (bytes[src.pos] !== fmt[i]) break;
+      src.pos++;
+      continue;
+    }
+    const start = i++;
+    const suppress = fmt[i] === 42;
+    if (suppress) i++;
+    let width = '';
+    while (fmt[i] >= 48 && fmt[i] <= 57) width += String.fromCharCode(fmt[i++]);
+    const limit = width === '' ? Infinity : Number(width);
+    let length = '';
+    while (fmt[i] !== undefined && 'hlzjt'.includes(String.fromCharCode(fmt[i]))) length += String.fromCharCode(fmt[i++]);
+    if (fmt[i] === undefined) throw m.fault(`${what}: the format string ends in the middle of a conversion`);
+    const conv = String.fromCharCode(fmt[i]);
+    const spec = text(fmt.slice(start, i + 1));
+    if (conv === '%') {
+      skipSpace();
+      if (bytes[src.pos] !== 37) break;
+      src.pos++;
+      continue;
+    }
+    if (conv === 'c') {
+      const n = width === '' ? 1 : limit;
+      if (src.pos + n > bytes.length) { if (!stored && src.pos >= bytes.length) return -1; break; }
+      if (!suppress) { m.writeBytes(target(spec, null), bytes.slice(src.pos, src.pos + n)); stored++; }
+      src.pos += n;
+      continue;
+    }
+    skipSpace();
+    if (src.pos >= bytes.length) return stored || -1;
+    const from = src.pos;
+    const take = ok => { while (src.pos < bytes.length && src.pos - from < limit && ok(bytes[src.pos])) src.pos++; };
+    const digit = base => c => (c >= 48 && c <= 57 ? c - 48 : (c | 32) >= 97 && (c | 32) <= 122 ? (c | 32) - 87 : 99) < base;
+    if (conv === 's') {
+      take(c => !isSpace(c));
+      if (!suppress) { m.writeBytes(target(spec, null), Uint8Array.from([...bytes.slice(from, src.pos), 0])); stored++; }
+    } else if ('diuxXo'.includes(conv)) {
+      const type = SCAN_INT[length];
+      if (!type) throw m.fault(`${what}: unknown conversion '${spec}'`);
+      let negative = false;
+      if (src.pos - from < limit && (bytes[src.pos] === 43 || bytes[src.pos] === 45)) negative = bytes[src.pos++] === 45;
+      let base = conv === 'o' ? 8 : conv === 'x' || conv === 'X' ? 16 : 10;
+      const hexPrefix = bytes[src.pos] === 48 && (bytes[src.pos + 1] | 32) === 120 && digit(16)(bytes[src.pos + 2]);
+      if ((base === 16 || conv === 'i') && hexPrefix) { src.pos += 2; base = 16; }
+      else if (conv === 'i' && bytes[src.pos] === 48) base = 8;
+      const digits = src.pos;
+      take(digit(base));
+      if (src.pos === digits) { src.pos = from; break; }
+      let value = BigInt((base === 16 ? '0x' : base === 8 ? '0o' : '') + text(bytes.slice(digits, src.pos)));
+      if (negative) value = -value;
+      if (!suppress) { m.store(target(spec, type), type, type.size === 8 ? BigInt.asIntN(64, value) : Number(BigInt.asIntN(32, value))); stored++; }
+    } else if ('fFeEgG'.includes(conv)) {
+      const type = length === 'l' ? DOUBLE : FLOAT;
+      const match = /^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?/.exec(text(bytes.slice(from, Math.min(bytes.length, from + Math.min(limit, 64)))));
+      if (!match) break;
+      src.pos = from + match[0].length;
+      if (!suppress) { m.store(target(spec, type), type, type.size === 4 ? Math.fround(parseFloat(match[0])) : parseFloat(match[0])); stored++; }
+    } else throw m.fault(`${what}: the conversion '${spec}' is not supported here`);
+  }
+  return stored;
+}
+
 const inRange = (c, lo, hi) => c >= lo && c <= hi;
 const flag = b => (b ? 1 : 0);
 
@@ -241,16 +342,47 @@ export const BUILTINS = {
     if (a[1] > 0) m.writeBytes(a[0], latin1(s.slice(0, a[1] - 1) + '\0'));
     return s.length;
   },
+  vprintf(m, a) { const s = vformat(m, a[0], a[1], 'vprintf'); m.write(s); return s.length; },
+  vsprintf(m, a) {
+    const s = vformat(m, a[1], a[2], 'vsprintf');
+    m.writeBytes(a[0], latin1(s + '\0'));
+    return s.length;
+  },
+  vsnprintf(m, a) {
+    const s = vformat(m, a[2], a[3], 'vsnprintf');
+    if (a[1] > 0) m.writeBytes(a[0], latin1(s.slice(0, a[1] - 1) + '\0'));
+    return s.length;
+  },
   puts(m, a) { m.write(text(m.cstr(a[0])) + '\n'); return 1; },
+  getchar(m) { return m.inputPos < m.input.length ? m.input[m.inputPos++] : -1; },
+  fgets(m, a) {
+    const [dest, size] = a;
+    if (size <= 0 || m.inputPos >= m.input.length) return 0;
+    const line = [];
+    while (line.length < size - 1 && m.inputPos < m.input.length) {
+      const c = m.input[m.inputPos++];
+      line.push(c);
+      if (c === 10) break;
+    }
+    m.writeBytes(dest, Uint8Array.from([...line, 0]));
+    return dest;
+  },
+  scanf(m, a, n) {
+    const src = { bytes: m.input, pos: m.inputPos };
+    const count = scan(m, src, a[0], a.slice(1), n.slice(1), 'scanf');
+    m.inputPos = src.pos;
+    return count;
+  },
+  sscanf(m, a, n) { return scan(m, { bytes: Uint8Array.from(m.cstr(a[0])), pos: 0 }, a[1], a.slice(2), n.slice(2), 'sscanf'); },
   putchar(m, a) { m.write(String.fromCharCode(a[0] & 0xFF)); return a[0] & 0xFF; },
 
   memcpy(m, a) {
     const [dst, src, n] = a;
     if (n > 0 && dst < src + n && src < dst + n && dst !== src) throw m.fault('memcpy: the source and destination overlap, which is undefined behaviour; use memmove');
-    m.writeBytes(dst, m.readBytes(src, n));
+    m.copy(dst, src, n);
     return dst;
   },
-  memmove(m, a) { m.writeBytes(a[0], m.readBytes(a[1], a[2])); return a[0]; },
+  memmove(m, a) { m.copy(a[0], a[1], a[2]); return a[0]; },
   memset(m, a) { m.writeBytes(a[0], new Uint8Array(a[2]).fill(a[1] & 0xFF)); return a[0]; },
   memcmp(m, a) {
     const x = m.readBytes(a[0], a[2]), y = m.readBytes(a[1], a[2]);
@@ -309,7 +441,7 @@ export const BUILTINS = {
     if (!old || old.free) throw m.fault('realloc() of a pointer that is not a live allocation');
     const p = m.malloc(a[1]);
     if (!p) return 0;
-    m.writeBytes(p, m.readBytes(a[0], Math.min(old.size, a[1])));
+    m.copy(p, a[0], Math.min(old.size, a[1]));
     m.free(a[0]);
     return p;
   },

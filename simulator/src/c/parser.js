@@ -53,6 +53,7 @@ export class Parser {
     this.pack = 0;
     this.loops = 0;
     this.breakable = 0;
+    this.paramDepth = 0;     // above zero while a parameter list is being parsed
   }
 
   // ---- token helpers -----------------------------------------------------------
@@ -269,6 +270,7 @@ export class Parser {
         if (!d.name) this.err('Expected a member name');
         if (members.some(m => m.name === d.name)) this.err(`Duplicate member '${d.name}'`, d.tok);
         if (d.type.kind === 'func') this.err(`Member '${d.name}' is a function; use a function pointer`, d.tok);
+        if (d.type.vlaLen) this.err(`Member '${d.name}' needs a constant size: a struct cannot hold a variable-length array`, d.tok);
         if (d.type.kind === 'void' || (isRecord(d.type) && !record(d.type).fields)) this.err(`Member '${d.name}' has an incomplete type`, d.tok);
         const m = { name: d.name, type: d.type };
         if (this.eatOp(':')) {
@@ -331,14 +333,9 @@ export class Parser {
     for (;;) {
       if (this.eatOp('[')) {
         while (this.peek().k === 'id' && (STORAGE.has(this.peek().v) || this.peek().v === 'const' || SKIPPED.has(this.peek().v))) this.next();
-        let length = null;
-        if (!this.isOp(']')) {
-          const at = this.peek();
-          length = this.constInt('Array sizes must be constant; variable-length arrays are not supported');
-          if (length < 0) this.err('Array size is negative', at);
-        }
+        const size = this.isOp(']') ? { length: null } : this.arrayLength();
         this.expectOp(']');
-        suffixes.push({ length });
+        suffixes.push(size);
       } else if (this.isOp('(')) {
         this.next();
         suffixes.push(this.paramList());
@@ -350,7 +347,9 @@ export class Parser {
       if ('length' in s) {
         if (type.kind === 'func') this.err('An array of functions is not allowed; use function pointers');
         if (type.kind === 'void' || (isRecord(type) && !record(type).fields)) this.err('Array element type is incomplete');
+        if (type.vlaLen) this.err('Only a one-dimensional array can take its size from a variable');
         type = array(type, s.length);
+        if (s.vla) type.vlaLen = s.vla;
       } else {
         if (type.kind === 'func' || type.kind === 'array') this.err('A function cannot return a function or an array');
         type = func(type, s.params, s.variadic);
@@ -373,6 +372,7 @@ export class Parser {
     if (this.eatOp(')')) return { params, variadic: false, unspecified: true };
     if (this.isId('void') && this.isOp(')', 1)) { this.p += 2; return { params, variadic: false }; }
     let variadic = false;
+    this.paramDepth++;
     do {
       if (this.eatOp('...')) { variadic = true; break; }
       if (!this.isTypeStart()) this.err(this.peek().k === 'id' ? `Unknown type name '${this.peek().v}'` : `Expected a parameter type but found ${this.describe()}`);
@@ -384,6 +384,8 @@ export class Parser {
       else if (type.kind === 'void') this.err("'void' must be the only parameter", d.tok);
       params.push({ name: d.name, type, tok: d.tok });
     } while (this.eatOp(','));
+    this.paramDepth--;
+    if (variadic && !params.length) this.err("A function that takes '...' needs at least one named parameter before it");
     this.expectOp(')');
     return { params, variadic };
   }
@@ -393,6 +395,7 @@ export class Parser {
     if (spec.storage) this.err('A storage class is not allowed here');
     const d = this.declarator(spec.type);
     if (d.name) this.err(`Unexpected name '${d.name}' in a type`, d.tok);
+    if (d.type.vlaLen) this.err('A variable-length array type is only supported in the declaration of a local array', d.tok);
     return d.type;
   }
 
@@ -407,6 +410,7 @@ export class Parser {
       this.attributes();
       if (spec.storage === 'typedef') {
         const t = d.type;
+        if (t.vlaLen) this.err('A typedef cannot name a variable-length array', d.tok);
         // Keep the alias so messages can say 'uint8_t' rather than 'unsigned char'.
         this.scope.syms.set(d.name, { kind: 'typedef', type: isArith(t) && !t.const ? { ...t, name: d.name } : t });
       } else if (d.type.kind === 'func') {
@@ -446,7 +450,7 @@ export class Parser {
     fn.type = d.type;
     fn.line = d.tok.line;
     fn.file = d.tok.file;
-    this.fn = { top: 0, locals: [], ret: d.type.ret, name: d.name };
+    this.fn = { top: 0, locals: [], ret: d.type.ret, name: d.name, variadic: d.type.variadic, labels: new Map(), gotos: [] };
     this.scope = new Scope(this.scope);
     fn.params = d.type.params.map(pm => {
       if (!pm.name) this.err('Parameter name omitted', pm.tok);
@@ -457,9 +461,12 @@ export class Parser {
     });
     fn.body = this.compound(false);
     this.scope = this.scope.parent;
+    for (const g of this.fn.gotos) if (!this.fn.labels.has(g.v)) this.err(`'goto ${g.v}' has no label '${g.v}:' to jump to in '${d.name}'`, g);
+    if (this.fn.labels.size) labelsIn(fn.body);
     fn.frameSize = alignUp(this.fn.top, 8);
     fn.shadow = new Uint8Array(fn.frameSize).fill(SHADOW_STACK_GAP);
-    for (const [off, size] of this.fn.locals) fn.shadow.fill(0, off, off + size);
+    // A local may be written but holds no value yet; the machine reports a read that comes first.
+    for (const [off, size] of this.fn.locals) fn.shadow.fill(SHADOW_UNINIT, off, off + size);
     this.fn = null;
   }
 
@@ -468,6 +475,7 @@ export class Parser {
     const name = d.name;
     if (type.kind === 'void') this.err(`Variable '${name}' is declared void`, d.tok);
     const isStatic = !this.fn || storage === 'static' || storage === 'extern';
+    if (type.vlaLen) return [this.vlaVariable(d, isStatic)];
     const scope = storage === 'extern' ? this.global : this.scope;
     const existing = scope.syms.get(name);
     if (existing && (this.fn && storage !== 'extern' || existing.kind !== 'var' || !sameType(existing.node.type, type))) {
@@ -504,6 +512,21 @@ export class Parser {
     const stmt = { k: 'decl', base: node, items, line: d.tok.line, file: d.tok.file };
     if (isStatic) { this.ginits.push(stmt); return []; }
     return [stmt];
+  }
+
+  // A local array whose length is only known when the declaration runs. Its storage is taken from
+  // the stack at that moment; two hidden locals remember where it is and how big it turned out.
+  vlaVariable(d, isStatic) {
+    const name = d.name, type = d.type;
+    if (isStatic) this.err(`'${name}' cannot be static: a variable-length array lives on the stack`, d.tok);
+    if (this.scope.syms.has(name)) this.err(`Redefinition of '${name}'`, d.tok);
+    if (this.isOp('=')) this.err(`'${name}' cannot have an initialiser: its size is not known until the program runs. Fill it with a loop or memset`, d.tok);
+    this.warn(`'${name}' is a variable-length array: its stack use depends on a run-time value, which most firmware coding standards forbid`, d.tok);
+    const ptrOff = this.allocLocal(UINT).off, sizeOff = this.allocLocal(UINT).off;
+    const vla = array(type.of, null);
+    vla.vla = { sizeOff };
+    this.scope.syms.set(name, { kind: 'var', node: { k: 'vlavar', off: ptrOff, type: vla, lv: true, name }, initialised: false });
+    return { k: 'vla', name, ptrOff, sizeOff, count: type.vlaLen, elem: type.of.size, line: d.tok.line, file: d.tok.file };
   }
 
   // ---- initialisers ------------------------------------------------------------
@@ -747,15 +770,28 @@ export class Parser {
           this.err(`'${t.v}' labels must sit directly inside the braces of a switch`);
           break;
         case 'else': this.err("'else' without a matching 'if'"); break;
-        case 'goto': this.err("'goto' is not supported here; restructure the code with loops and functions"); break;
+        case 'goto': {
+          this.next();
+          const label = this.expectId();
+          this.expectOp(';');
+          this.fn.gotos.push(label);
+          return { k: 'goto', name: label.v, ...at };
+        }
         case '_Static_assert': this.staticAssert(); return { k: 'empty', ...at };
         default:
+          if (!KEYWORDS.has(t.v) && this.isOp(':', 1)) {
+            this.p += 2;
+            if (this.fn.labels.has(t.v)) this.err(`Label '${t.v}' is already defined in this function`, t);
+            this.fn.labels.set(t.v, t);
+            // A label names a statement; one at the very end of a block names an empty one.
+            const body = this.isOp('}') ? { k: 'empty', ...at } : this.statement();
+            return { k: 'label', name: t.v, body, ...at };
+          }
           if (this.isTypeStart(t)) {
             const stmts = this.declaration();
             return stmts.length === 1 ? stmts[0] : { k: 'block', body: stmts, ...at };
           }
           if (!KEYWORDS.has(t.v) && this.peek(1).k === 'id' && !this.scope.find(t.v)) this.err(`Unknown type name '${t.v}'`);
-          if (this.isOp(':', 1) && !this.scope.find(t.v)) this.err('Labels and goto are not supported here');
       }
     }
     const e = this.expr();
@@ -861,6 +897,40 @@ export class Parser {
     return v;
   }
   constInt(message) { return Number(this.constValue(message)); }
+
+  // The length between '[' and ']' of an array declarator: a constant, or for a local array an
+  // expression worked out when the declaration runs (a variable-length array).
+  arrayLength() {
+    const at = this.peek();
+    if (this.paramDepth) {
+      // `int a[n]` in a parameter list is just a pointer, and `n` may be an earlier parameter.
+      const save = this.p;
+      try {
+        const length = this.constInt();
+        if (length < 0) this.err('Array size is negative', at);
+        return { length };
+      } catch (e) {
+        if (!(e instanceof CError) || /negative/.test(e.message)) throw e;
+        this.p = save;
+        for (let depth = 0; !(depth === 0 && this.isOp(']')); ) {
+          const t = this.next();
+          if (t.k === 'eof') this.err("Missing ']'", at);
+          if (t.k === 'op' && t.v === '[') depth++;
+          if (t.k === 'op' && t.v === ']') depth--;
+        }
+        return { length: null };
+      }
+    }
+    const e = this.rv(this.assignExpr());
+    const v = fold(e);
+    if (!isInt(e.type)) this.err(`An array size must be an integer, not '${typeName(e.type)}'`, at);
+    if (v !== undefined) {
+      if (Number(v) < 0) this.err('Array size is negative', at);
+      return { length: Number(v) };
+    }
+    if (!this.fn) this.err('The size of an array outside a function must be a constant', at);
+    return { length: null, vla: this.cast(e, INT) };
+  }
 
   expr() {
     let e = this.assignExpr();
@@ -1063,6 +1133,8 @@ export class Parser {
         const e = this.unary();
         if (e.bf) this.err('sizeof cannot be applied to a bit-field', t);
         type = e.type;
+        // The one sizeof that is worked out while the program runs.
+        if (type.vla) return { k: 'vlasize', off: type.vla.sizeOff, type: UINT, ...at };
       }
       if (type.kind === 'func') this.err('sizeof cannot be applied to a function', t);
       if ((isRecord(type) && !record(type).fields) || (type.kind === 'array' && type.length === null)) this.err(`sizeof cannot be applied to the incomplete type '${typeName(type)}'`, t);
@@ -1196,6 +1268,7 @@ export class Parser {
     }
     if (t.k === 'id') {
       if (t.v === '__builtin_offsetof') return this.offsetOf(t);
+      if (t.v.startsWith('__builtin_va_')) return this.vaBuiltin(t);
       if (t.v === '__func__' || t.v === '__FUNCTION__') {
         const bytes = [...(this.fn ? this.fn.name : '')].map(c => c.charCodeAt(0));
         return { k: 'str', addr: this.intern(bytes), type: array(CHAR, bytes.length + 1), lv: true, ...at };
@@ -1212,6 +1285,42 @@ export class Parser {
       this.err(`'${t.v}' is a type, not a value`, t);
     }
     this.err(`Expected an expression but found ${this.describe(t)}`, t);
+  }
+
+  // va_start, va_arg, va_end and va_copy. They take a type or need the enclosing function, so they
+  // are parsed here instead of being declared as library functions.
+  vaBuiltin(t) {
+    const at = { line: t.line, file: t.file };
+    const what = t.v.replace('__builtin_', '');
+    if (!['va_start', 'va_arg', 'va_end', 'va_copy'].includes(what)) this.err(`'${t.v}' is not declared`, t);
+    this.expectOp('(');
+    const list = () => {
+      const e = this.assignExpr();
+      if (!isInt(e.type) || e.type.name !== 'va_list') this.err(`${what} needs a va_list, not '${typeName(e.type)}'`, t);
+      return e;
+    };
+    const ap = list();
+    let node;
+    if (what === 'va_start') {
+      if (!this.fn || !this.fn.variadic) this.err("va_start can only be used in a function whose parameter list ends in '...'", t);
+      if (!ap.lv) this.err('va_start needs a va_list variable', t);
+      this.expectOp(',');
+      this.assignExpr(); // the last named parameter; nothing here depends on which one it is
+      node = { k: 'vastart', ap, type: VOID, ...at };
+    } else if (what === 'va_arg') {
+      this.expectOp(',');
+      const type = this.typeName();
+      if (isInt(type) && (type.size < 4 || type.bool)) this.err(`va_arg(ap, ${typeName(type)}) can never be right: a '${typeName(type)}' argument is promoted to 'int' when it is passed through '...'. Use va_arg(ap, int)`, t);
+      if (type.kind === 'float' && type.size === 4) this.err("va_arg(ap, float) can never be right: a 'float' argument is promoted to 'double' when it is passed through '...'. Use va_arg(ap, double)", t);
+      if (!isScalar(type) && !(isRecord(type) && record(type).fields)) this.err(`va_arg cannot fetch a '${typeName(type)}'`, t);
+      node = { k: 'vaarg', ap, type, ...at };
+    } else if (what === 'va_copy') {
+      if (!ap.lv) this.err('va_copy needs a va_list variable as its destination', t);
+      this.expectOp(',');
+      node = { k: 'vacopy', ap, src: list(), type: VOID, ...at };
+    } else node = { k: 'vaend', ap, type: VOID, ...at };
+    this.expectOp(')');
+    return node;
   }
 
   offsetOf(t) {
@@ -1243,6 +1352,31 @@ const cap = s => s[0].toUpperCase() + s.slice(1);
 
 // The value written into the shadow memory between local variables; see machine.js.
 export const SHADOW_STACK_GAP = 6;
+// The value for memory that may be written but has not been given a value yet.
+export const SHADOW_UNINIT = 8;
+
+// Records which labels each statement contains, so a goto can find its way to one: `labels` on every
+// statement with a label inside it, and on blocks and switches `labelIdx`, the child that leads there.
+function labelsIn(s) {
+  let found = null;
+  const add = names => { if (names) { found = found || new Set(); for (const n of names) found.add(n); } };
+  switch (s.k) {
+    case 'label': add([s.name]); add(labelsIn(s.body)); break;
+    case 'block': case 'switch':
+      s.body.forEach((child, i) => {
+        const inside = labelsIn(child);
+        if (!inside) return;
+        s.labelIdx = s.labelIdx || new Map();
+        for (const n of inside) s.labelIdx.set(n, i);
+        add(inside);
+      });
+      break;
+    case 'if': add(labelsIn(s.a)); if (s.b) add(labelsIn(s.b)); break;
+    case 'while': case 'dowhile': case 'for': add(labelsIn(s.body)); break;
+  }
+  if (found) s.labels = found;
+  return found;
+}
 
 // Constant folding for array sizes, case labels, enum values and static assertions.
 // Returns undefined when the expression is not a compile-time constant.

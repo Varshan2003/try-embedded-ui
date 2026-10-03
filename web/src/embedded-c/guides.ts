@@ -23,6 +23,11 @@ import reference from '../content/guides/quick-reference.md?raw';
 // 'foundations' assumes no programming experience; 'core' assumes the foundations.
 export type Track = 'foundations' | 'core';
 
+export const TRACKS: Record<Track, { title: string; note: string }> = {
+  foundations: { title: 'Learn C from Zero', note: 'No programming experience needed. Work through these in order.' },
+  core: { title: 'Embedded C', note: 'The C that firmware is built from. Assumes the track above, or that you already know basic C.' },
+};
+
 export interface Guide {
   id: string;
   track: Track;
@@ -59,3 +64,6 @@ export const QUICK_REFERENCE: Guide = {
 };
 
 export const guideById = (id: string) => GUIDES.find(g => g.id === id);
+
+// A problem belongs to the track of the guide that shares its topic id.
+export const problemTrack = (p: { topic: string }): Track => guideById(p.topic)?.track ?? 'core';

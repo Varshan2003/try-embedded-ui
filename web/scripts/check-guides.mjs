@@ -1,18 +1,34 @@
-// Checks the Embedded C guides: every runnable example must compile and run cleanly in the
+// Checks the Embedded C guides and theory answers: every runnable example must compile and run cleanly in the
 // interpreter (or fail, if it is marked `fails`), and every quiz must have exactly one right
 // answer. Pass --print to see the output.
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { runC } from '@try-embedded/simulator';
 
-const dir = fileURLToPath(new URL('../src/content/guides/', import.meta.url));
+const dirs = ['guides', 'theory'].map(name => fileURLToPath(new URL(`../src/content/${name}/`, import.meta.url)));
 const print = process.argv.includes('--print');
 let examples = 0, quizzes = 0, failures = 0;
 
 const fail = (file, line, message) => { failures++; console.error(`${file}:${line}: ${message}`); };
 
-for (const file of readdirSync(dir).filter(f => f.endsWith('.md')).sort()) {
+let questions = 0;
+const seen = new Set();
+
+for (const dir of dirs) for (const file of readdirSync(dir).filter(f => f.endsWith('.md')).sort()) {
   const lines = readFileSync(dir + file, 'utf8').split('\n');
+  if (dir.endsWith('theory/')) {
+    // Each `## ` heading is one question; its text becomes its id, so it must be unique and have an answer.
+    let inFence = false;
+    lines.forEach((line, n) => {
+      if (line.startsWith('```')) inFence = !inFence;
+      if (inFence || !line.startsWith('## ')) return;
+      questions++;
+      if (seen.has(line)) fail(file, n + 1, 'this question appears twice');
+      seen.add(line);
+      const next = lines.slice(n + 1).find(l => l.trim());
+      if (!next || next.startsWith('## ')) fail(file, n + 1, 'this question has no answer');
+    });
+  }
   for (let i = 0; i < lines.length; i++) {
     const fence = /^```(\S*)\s*(.*)$/.exec(lines[i]);
     if (!fence) continue;
@@ -43,5 +59,5 @@ for (const file of readdirSync(dir).filter(f => f.endsWith('.md')).sort()) {
   }
 }
 
-console.log(`${examples} runnable examples and ${quizzes} quizzes checked, ${failures} problem${failures === 1 ? '' : 's'}`);
+console.log(`${examples} runnable examples, ${quizzes} quizzes and ${questions} theory questions checked, ${failures} problem${failures === 1 ? '' : 's'}`);
 process.exit(failures ? 1 : 0);

@@ -1,8 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Placeholder mark: replace this file with the real Try Embedded logo. -->
-  <g stroke="#1aa6c9" stroke-width="4" stroke-linecap="round">
-    <path d="M22 6v10M32 6v10M42 6v10M22 48v10M32 48v10M42 48v10M6 22h10M6 32h10M6 42h10M48 22h10M48 32h10M48 42h10"/>
-  </g>
-  <rect x="14" y="14" width="36" height="36" rx="7" fill="#1aa6c9"/>
-  <path d="M24 25h16M32 25v15" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -8 80 72" fill="none">
+  <style>
+    .ink { fill: #1d222b; } .cut { stroke: #ffffff; }
+    @media (prefers-color-scheme: dark) { .ink { fill: #eef1f4; } .cut { stroke: #0f1317; } }
+  </style>
+  <path class="ink" d="M10 7L19 2V14H27V22H19V38Q19 43 24 43H28V52H24Q10 52 10 38V22H4V14H10Z"/>
+  <path class="cut" d="M53 33A14 14 0 1 0 49.5 43" stroke-width="15"/>
+  <path d="M53 33A14 14 0 1 0 49.5 43" stroke="#f47b20" stroke-width="8.5"/>
+  <path d="M26 33h29l3 3h5" stroke="#f47b20" stroke-width="5" stroke-linejoin="round"/>
+  <circle cx="66.5" cy="36" r="3.5" stroke="#f47b20" stroke-width="3"/>
 </svg>
